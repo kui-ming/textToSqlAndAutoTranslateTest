@@ -1,6 +1,8 @@
 #
 import tools
 from baidu_translate_test import translate_test as trans
+import re
+import sql_generator
 
 
 # 接收
@@ -16,10 +18,8 @@ def parse(text):
     table_obj = {
         'name': '',
         'comments': '',
-        'fields': [
-        ]
+        'fields': []
     }
-    #text = "用户\nID、用户名、密码、盐值、创建时间、状态"
     #   处理源文本
     text = text.replace("、", ",")
     text = text.replace("，", ",")
@@ -47,7 +47,7 @@ def parse(text):
 
 
 # 翻译字段
-def translate_table(table_obj:dict):
+def translate_table(table_obj: dict):
     #   翻译表名
     word = str(table_obj.get("name"))
     if not word:   # 表名为空或为''
@@ -71,8 +71,52 @@ def translate_table(table_obj:dict):
             field['remark'] = str(res['trans_result'][0].get("dst"))
         word = word.lower().strip().replace(" ", "_")
         field['name'] = word
+    is_type(table_obj)
     #   返回翻译后的对象
     return table_obj
-# 生成SQL
 
-print(start())
+
+# 判断字段类型
+def is_type(table_obj: dict):
+    fields = table_obj.get("fields")
+    is_find_key = True
+    for field in fields:
+        name = field.get('name')
+        # 判断是否具有Type
+        if not field.get('type'):
+            if name[-2:] == "id":
+                field['type'] = 'int'
+            elif name[-4:] == "time":
+                field['type'] = 'datetime'
+            else:
+                field['type'] = 'varchar'
+        # 是否存在长度
+        if not field.get('len'):
+            field_type = field.get('type')
+            if field_type == 'int':
+                field['len'] = 11
+            elif field_type == 'varchar':
+                field['len'] = 255
+        # 是否为主键
+        if not field.get('primary_key') and is_find_key:
+            if name[-2:] == 'id':
+                field['primary_key'] = True
+                is_find_key = False
+        # 是否为空
+        if not field.get("is_null"):
+            if field.get("primary_key"):
+                field['is_null'] = False
+            else:
+                field['is_null'] = True
+    # 如果字段循环完毕还未找到主键，直接将第一个字段设置为主键
+    if not is_find_key:
+        table_obj.get('fields')[0]['primary_key'] = True
+    return table_obj
+
+
+# 生成SQL
+def generate_sql(table_obj: dict):
+    return sql_generator.to_sql({'tables': [table_obj]})
+
+
+print(generate_sql(start()))
